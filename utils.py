@@ -1,20 +1,30 @@
 import os
-import random
 import numpy as np
+import pandas as pd
 from one_hot_map import one_hot_map
 from keras.preprocessing import image
 from keras.applications.vgg16 import VGG16
+from sklearn.model_selection import train_test_split
 from keras.applications.vgg16 import preprocess_input
 
 
 path_base = '.\\..\\vsr3pp\\input\\'
 path_csv = os.path.join(path_base, 'all_rois.csv')
 image_size = 224
-batch_size = 24
+batch_size = 100
 vgg16_emb_dim = 25088
 text_emb_dim = 370
 path_train = os.path.join(path_base, 'all_rois')
 vgg16_model = VGG16(weights='imagenet', include_top=False)
+
+data = pd.read_csv(path_csv)
+train, test = train_test_split(data, train_size=0.7, random_state=1337)
+file_id_mapping_train = {k: v for k, v in zip(train.imgID.values, train.GT.values)}
+file_id_mapping_test = {k: v for k, v in zip(test.imgID.values, test.GT.values)}
+train_len = len(file_id_mapping_train)
+test_len = len(file_id_mapping_test)
+steps_per_epoch = int(train_len / batch_size)
+validation_steps = int(test_len / batch_size)
 
 
 def get_feature_vectors(img_path):
@@ -42,11 +52,12 @@ def get_text_one_hot_encoding(txt):
 
 
 def generate(file_id_mapping):
-    index = 1
-    n = len(file_id_mapping)
+    print("Entered generate -->")
     plate_files = list(file_id_mapping.keys())
     plate_nums = list(file_id_mapping.values())
-    while index < n:
+    n = len(plate_nums)
+    start = 0
+    while start < n:
         list_anchor_itt = list()
         list_positive_itt = list()
         list_negative_itt = list()
@@ -54,8 +65,9 @@ def generate(file_id_mapping):
         list_positive_tii = list()
         list_negative_tii = list()
 
-        for i in range(batch_size):
-            idx_itt = index
+        print("\nstart = " + str(start))
+        for i in range(start + 1, start + batch_size, 1):
+            idx_itt = i
             anchor_image_itt = os.path.join(path_train, plate_files[idx_itt])
             if os.path.exists(anchor_image_itt + '.roi0.jpg'):
                 anchor_image_itt = anchor_image_itt + '.roi0.jpg'
@@ -73,7 +85,7 @@ def generate(file_id_mapping):
             list_positive_itt.append(positive_text_vector_itt)
             list_negative_itt.append(negative_text_vector_itt)
 
-            idx_tii = index
+            idx_tii = i
             anchor_text_tii = plate_nums[idx_tii]
             anchor_text_vector_tii = get_text_one_hot_encoding(anchor_text_tii).tolist()
             positive_image_tii = os.path.join(path_train, plate_files[idx_tii])
@@ -100,6 +112,11 @@ def generate(file_id_mapping):
             list_anchor_tii.append(anchor_text_vector_tii)
             list_positive_tii.append(positive_image_vector_tii)
             list_negative_tii.append(negative_image_vector_tii)
+
+        if start + batch_size > n:
+            break
+        else:
+            start += batch_size
 
         list_anchor_itt = np.array(list_anchor_itt)
         list_positive_itt = np.array(list_positive_itt)

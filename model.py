@@ -5,7 +5,8 @@ from keras.layers import Dense, Activation, BatchNormalization
 from keras.optimizer_v2.adam import Adam
 from sklearn.model_selection import train_test_split
 
-from utils import path_csv, vgg16_emb_dim, text_emb_dim, generate
+from utils import path_csv, vgg16_emb_dim, text_emb_dim, generate, steps_per_epoch, validation_steps, \
+    file_id_mapping_train, file_id_mapping_test
 
 
 def symmetric_triplet_loss(inputs, dist='sqeuclidean', margin='maxplus'):
@@ -91,11 +92,6 @@ def get_models():
 if __name__ == "__main__":
     triplet_model, t2nn_embedding_model, f2nn_embedding_model = get_models()
 
-    data = pd.read_csv(path_csv)
-    train, test = train_test_split(data, train_size=0.7, random_state=1337)
-    file_id_mapping_train = {k: v for k, v in zip(train.imgID.values, train.GT.values)}
-    file_id_mapping_test = {k: v for k, v in zip(test.imgID.values, test.GT.values)}
-
     gen_tr = generate(file_id_mapping_train)
     gen_te = generate(file_id_mapping_test)
 
@@ -105,8 +101,8 @@ if __name__ == "__main__":
                                           epochs=10,
                                           verbose=1,
                                           workers=1,
-                                          steps_per_epoch=200,
-                                          validation_steps=20,
+                                          steps_per_epoch=steps_per_epoch,
+                                          validation_steps=validation_steps,
                                           use_multiprocessing=False)
 
     t2nn_embedding_model.save_weights(filepath='t2nn.h5')
