@@ -29,27 +29,13 @@ validation_steps = int(test_len / batch_size)
 
 plate_files_train = list(file_id_mapping_train.keys())
 plate_nums_train = list(file_id_mapping_train.values())
+o_n_train = len(plate_nums_train)
 n_train = len(plate_nums_train) * num_of_epochs
-
-plate_files_train.extend(plate_files_train)
-plate_files_train.extend(plate_files_train)
-plate_files_train.extend(plate_files_train)
-
-plate_nums_train.extend(plate_nums_train)
-plate_nums_train.extend(plate_nums_train)
-plate_nums_train.extend(plate_nums_train)
 
 plate_files_test = list(file_id_mapping_test.keys())
 plate_nums_test = list(file_id_mapping_test.values())
+o_n_test = len(plate_nums_test)
 n_test = len(plate_nums_test) * num_of_epochs
-
-plate_files_test.extend(plate_files_test)
-plate_files_test.extend(plate_files_test)
-plate_files_test.extend(plate_files_test)
-
-plate_nums_test.extend(plate_nums_test)
-plate_nums_test.extend(plate_nums_test)
-plate_nums_test.extend(plate_nums_test)
 
 
 def get_feature_vectors(img_path):
@@ -80,10 +66,10 @@ def generate(is_train=True):
     start = 0
     if is_train:
         n = n_train
-        print("\n[Train] Start = {0}".format(start))
+        o_n = o_n_train
     else:
         n = n_test
-        print("\n[Test] Start = {0}".format(start))
+        o_n = o_n_test
     while start < n:
         list_anchor_itt = list()
         list_positive_itt = list()
@@ -92,14 +78,16 @@ def generate(is_train=True):
         list_positive_tii = list()
         list_negative_tii = list()
 
+        if start + batch_size > o_n:
+            # print("Resetting Start ...")
+            start = 0
+
         if is_train:
             plate_nums = plate_nums_train
             plate_files = plate_files_train
-            # print("\ntrain start = " + str(start))
         else:
             plate_nums = plate_nums_test
             plate_files = plate_files_test
-            # print("\ntest start = " + str(start))
         for i in range(start + 1, start + batch_size, 1):
             idx_itt = i
             anchor_image_itt = os.path.join(path_train, plate_files[idx_itt])
