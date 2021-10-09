@@ -8,10 +8,11 @@ from sklearn.model_selection import train_test_split
 from keras.applications.vgg16 import preprocess_input
 
 
+num_of_epochs = 3
 path_base = '.\\..\\vsr3pp\\input\\'
 path_csv = os.path.join(path_base, 'all_rois.csv')
 image_size = 224
-batch_size = 100
+batch_size = 50
 vgg16_emb_dim = 25088
 text_emb_dim = 370
 path_train = os.path.join(path_base, 'all_rois')
@@ -25,6 +26,30 @@ train_len = len(file_id_mapping_train)
 test_len = len(file_id_mapping_test)
 steps_per_epoch = int(train_len / batch_size)
 validation_steps = int(test_len / batch_size)
+
+plate_files_train = list(file_id_mapping_train.keys())
+plate_nums_train = list(file_id_mapping_train.values())
+n_train = len(plate_nums_train) * num_of_epochs
+
+plate_files_train.extend(plate_files_train)
+plate_files_train.extend(plate_files_train)
+plate_files_train.extend(plate_files_train)
+
+plate_nums_train.extend(plate_nums_train)
+plate_nums_train.extend(plate_nums_train)
+plate_nums_train.extend(plate_nums_train)
+
+plate_files_test = list(file_id_mapping_test.keys())
+plate_nums_test = list(file_id_mapping_test.values())
+n_test = len(plate_nums_test) * num_of_epochs
+
+plate_files_test.extend(plate_files_test)
+plate_files_test.extend(plate_files_test)
+plate_files_test.extend(plate_files_test)
+
+plate_nums_test.extend(plate_nums_test)
+plate_nums_test.extend(plate_nums_test)
+plate_nums_test.extend(plate_nums_test)
 
 
 def get_feature_vectors(img_path):
@@ -51,12 +76,14 @@ def get_text_one_hot_encoding(txt):
     return _encoding
 
 
-def generate(file_id_mapping):
-    print("Entered generate -->")
-    plate_files = list(file_id_mapping.keys())
-    plate_nums = list(file_id_mapping.values())
-    n = len(plate_nums)
+def generate(is_train=True):
     start = 0
+    if is_train:
+        n = n_train
+        print("\n[Train] Start = {0}".format(start))
+    else:
+        n = n_test
+        print("\n[Test] Start = {0}".format(start))
     while start < n:
         list_anchor_itt = list()
         list_positive_itt = list()
@@ -65,7 +92,14 @@ def generate(file_id_mapping):
         list_positive_tii = list()
         list_negative_tii = list()
 
-        print("\nstart = " + str(start))
+        if is_train:
+            plate_nums = plate_nums_train
+            plate_files = plate_files_train
+            # print("\ntrain start = " + str(start))
+        else:
+            plate_nums = plate_nums_test
+            plate_files = plate_files_test
+            # print("\ntest start = " + str(start))
         for i in range(start + 1, start + batch_size, 1):
             idx_itt = i
             anchor_image_itt = os.path.join(path_train, plate_files[idx_itt])

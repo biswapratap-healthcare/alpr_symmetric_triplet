@@ -1,12 +1,10 @@
-import pandas as pd
 from keras import backend as k
 from keras import Sequential, Input, Model
 from keras.layers import Dense, Activation, BatchNormalization
 from keras.optimizer_v2.adam import Adam
-from sklearn.model_selection import train_test_split
 
-from utils import path_csv, vgg16_emb_dim, text_emb_dim, generate, steps_per_epoch, validation_steps, \
-    file_id_mapping_train, file_id_mapping_test
+from utils import vgg16_emb_dim, text_emb_dim, steps_per_epoch, \
+    validation_steps, generate, num_of_epochs
 
 
 def symmetric_triplet_loss(inputs, dist='sqeuclidean', margin='maxplus'):
@@ -92,18 +90,19 @@ def get_models():
 if __name__ == "__main__":
     triplet_model, t2nn_embedding_model, f2nn_embedding_model = get_models()
 
-    gen_tr = generate(file_id_mapping_train)
-    gen_te = generate(file_id_mapping_test)
+    gen_tr = generate(is_train=True)
+    gen_te = generate(is_train=False)
 
     triplet_model.compile(loss=None, optimizer=Adam(0.01))
-    history = triplet_model.fit_generator(gen_tr,
-                                          validation_data=gen_te,
-                                          epochs=10,
-                                          verbose=1,
-                                          workers=1,
-                                          steps_per_epoch=steps_per_epoch,
-                                          validation_steps=validation_steps,
-                                          use_multiprocessing=False)
-
+    # for epoch in range(10):
+    #     print("epoch {0}/10".format(epoch))
+    history = triplet_model.fit(gen_tr,
+                                validation_data=gen_te,
+                                epochs=num_of_epochs,
+                                verbose=1,
+                                workers=1,
+                                steps_per_epoch=steps_per_epoch,
+                                validation_steps=validation_steps,
+                                use_multiprocessing=False)
     t2nn_embedding_model.save_weights(filepath='t2nn.h5')
     f2nn_embedding_model.save_weights(filepath='f2nn.h5')
