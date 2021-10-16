@@ -1,39 +1,39 @@
-from keras import backend as k
 from keras import Sequential, Input, Model
+from keras.callbacks import EarlyStopping
 from keras.layers import Dense, Activation, BatchNormalization
 from keras.optimizer_v2.adam import Adam
+from matplotlib import pyplot
 
 from utils import vgg16_emb_dim, text_emb_dim, steps_per_epoch, \
     validation_steps, generate, num_of_epochs
 
+import tensorflow as tf
 
-def symmetric_triplet_loss(inputs, dist='sqeuclidean', margin='maxplus'):
-    _anchor_itt_emb, _positive_itt_emb, _negative_itt_emb, \
-    _anchor_tii_emb, _positive_tii_emb, _negative_tii_emb = inputs
-    positive_distance_itt = k.square(_anchor_itt_emb - _positive_itt_emb)
-    negative_distance_itt = k.square(_anchor_itt_emb - _negative_itt_emb)
-    positive_distance_tii = k.square(_anchor_tii_emb - _positive_tii_emb)
-    negative_distance_tii = k.square(_anchor_tii_emb - _negative_tii_emb)
-    if dist == 'euclidean':
-        positive_distance_itt = k.sqrt(k.sum(positive_distance_itt, axis=-1, keepdims=True))
-        negative_distance_itt = k.sqrt(k.sum(negative_distance_itt, axis=-1, keepdims=True))
-        positive_distance_tii = k.sqrt(k.sum(positive_distance_tii, axis=-1, keepdims=True))
-        negative_distance_tii = k.sqrt(k.sum(negative_distance_tii, axis=-1, keepdims=True))
-    elif dist == 'sqeuclidean':
-        positive_distance_itt = k.sum(positive_distance_itt, axis=-1, keepdims=True)
-        negative_distance_itt = k.sum(negative_distance_itt, axis=-1, keepdims=True)
-        positive_distance_tii = k.sum(positive_distance_tii, axis=-1, keepdims=True)
-        negative_distance_tii = k.sum(negative_distance_tii, axis=-1, keepdims=True)
-    loss_itt = positive_distance_itt - negative_distance_itt
-    loss_tii = positive_distance_tii - negative_distance_tii
-    if margin == 'maxplus':
-        loss_itt = k.maximum(0.0, 1 + loss_itt)
-        loss_tii = k.maximum(0.0, 1 + loss_tii)
-    elif margin == 'softplus':
-        loss_itt = k.log(1 + k.exp(loss_itt))
-        loss_tii = k.log(1 + k.exp(loss_tii))
-    loss_itt = k.mean(loss_itt)
-    loss_tii = k.mean(loss_tii)
+
+def squared_dist(a, b):
+    assert a.shape.as_list() == b.shape.as_list()
+    row_norms_a = tf.reduce_sum(tf.square(a), axis=1)
+    row_norms_a = tf.reshape(row_norms_a, [-1, 1])
+    row_norms_b = tf.reduce_sum(tf.square(b), axis=1)
+    row_norms_b = tf.reshape(row_norms_b, [1, -1])
+    return row_norms_a - 2 * tf.matmul(a, tf.transpose(b)) + row_norms_b
+
+
+def triplet_loss(output_a, output_p, output_n, margin=2):
+    euclidean_distance_ap = squared_dist(output_a, output_p)
+    euclidean_distance_an = squared_dist(output_a, output_n)
+    t = tf.abs(margin + tf.pow(euclidean_distance_ap, 2) - tf.pow(euclidean_distance_an, 2))
+    m = tf.reduce_max(t)
+    loss_triplet = tf.clip_by_value(t,
+                                    clip_value_max=m,
+                                    clip_value_min=0.0)
+    return loss_triplet
+
+
+def symmetric_triplet_loss(inputs):
+    img_op0, txt_op0, txt_op1, txt_op0, img_op0, img_op1 = inputs
+    loss_itt = triplet_loss(img_op0, txt_op0, txt_op1)
+    loss_tii = triplet_loss(txt_op0, img_op0, img_op1)
     loss = loss_itt + loss_tii
     return loss
 
@@ -82,7 +82,7 @@ def get_models():
                _anchor_tii_emb, _positive_tii_emb, _negative_tii_emb]
 
     _triplet_model = Model(inputs, outputs)
-    _triplet_model.add_loss(k.mean(symmetric_triplet_loss(outputs)))
+    _triplet_model.add_loss(symmetric_triplet_loss(outputs))
 
     return _triplet_model, _t2nn_embedding_model, _f2nn_embedding_model
 
@@ -93,9 +93,8 @@ if __name__ == "__main__":
     gen_tr = generate(is_train=True)
     gen_te = generate(is_train=False)
 
-    triplet_model.compile(loss=None, optimizer=Adam(0.01))
-    # for epoch in range(10):
-    #     print("epoch {0}/10".format(epoch))
+    triplet_model.compile(optimizer=Adam(0.01))
+    es = EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=1)
     history = triplet_model.fit(gen_tr,
                                 validation_data=gen_te,
                                 epochs=num_of_epochs,
@@ -103,6 +102,11 @@ if __name__ == "__main__":
                                 workers=1,
                                 steps_per_epoch=steps_per_epoch,
                                 validation_steps=validation_steps,
-                                use_multiprocessing=False)
-    t2nn_embedding_model.save_weights(filepath='t2nn.h5')
-    f2nn_embedding_model.save_weights(filepath='f2nn.h5')
+                                use_multiprocessing=False,
+                                callbacks=[es])
+    t2nn_embedding_model.save(filepath='t2nn.h5')
+    f2nn_embedding_model.save(filepath='f2nn.h5')
+    pyplot.plot(history.history['loss'], label='train')
+    pyplot.plot(history.history['val_loss'], label='test')
+    pyplot.legend()
+    pyplot.show()

@@ -1,4 +1,6 @@
 import os
+import random
+
 import numpy as np
 import pandas as pd
 from one_hot_map import one_hot_map
@@ -8,17 +10,19 @@ from sklearn.model_selection import train_test_split
 from keras.applications.vgg16 import preprocess_input
 
 
-num_of_epochs = 3
+num_of_epochs = 5000
 path_base = '.\\..\\vsr3pp\\input\\'
 path_csv = os.path.join(path_base, 'all_rois.csv')
 image_size = 224
-batch_size = 50
+batch_size = 1
+dimension = 512
 vgg16_emb_dim = 25088
 text_emb_dim = 370
 path_train = os.path.join(path_base, 'all_rois')
 vgg16_model = VGG16(weights='imagenet', include_top=False)
 
 data = pd.read_csv(path_csv)
+data = data[:21]
 train, test = train_test_split(data, train_size=0.7, random_state=1337)
 file_id_mapping_train = {k: v for k, v in zip(train.imgID.values, train.GT.values)}
 file_id_mapping_test = {k: v for k, v in zip(test.imgID.values, test.GT.values)}
@@ -65,20 +69,19 @@ def get_text_one_hot_encoding(txt):
 def generate(is_train=True):
     start = 0
     if is_train:
-        n = n_train
         o_n = o_n_train
     else:
-        n = n_test
         o_n = o_n_test
-    while start < n:
+    while True:
         list_anchor_itt = list()
         list_positive_itt = list()
         list_negative_itt = list()
+
         list_anchor_tii = list()
         list_positive_tii = list()
         list_negative_tii = list()
 
-        if start + batch_size > o_n:
+        if start + batch_size >= o_n:
             # print("Resetting Start ...")
             start = 0
 
@@ -88,57 +91,78 @@ def generate(is_train=True):
         else:
             plate_nums = plate_nums_test
             plate_files = plate_files_test
-        for i in range(start + 1, start + batch_size, 1):
-            idx_itt = i
-            anchor_image_itt = os.path.join(path_train, plate_files[idx_itt])
-            if os.path.exists(anchor_image_itt + '.roi0.jpg'):
-                anchor_image_itt = anchor_image_itt + '.roi0.jpg'
-            elif os.path.exists(anchor_image_itt + '.troi0.jpg'):
-                anchor_image_itt = anchor_image_itt + '.troi0.jpg'
+
+        anchor_index = start
+
+        negative_indexes = random.sample(range(0, o_n - 1), 5)
+        while anchor_index in negative_indexes: negative_indexes.remove(anchor_index)
+
+        # print(anchor_index)
+        # print(negative_indexes)
+
+        for negative_index in negative_indexes:
+            p = os.path.join(path_train, plate_files[anchor_index])
+            p_roi = p + '.roi0.jpg'
+            p_troi = p + '.troi0.jpg'
+            if os.path.exists(p_roi):
+                anchor_image_itt = p_roi
+            elif os.path.exists(p_troi):
+                anchor_image_itt = p_troi
             else:
                 continue
             anchor_image_vector_itt = get_feature_vectors(anchor_image_itt).flatten().tolist()
-            positive_text_itt = plate_nums[idx_itt]
+            positive_text_itt = plate_nums[anchor_index]
             positive_text_vector_itt = get_text_one_hot_encoding(positive_text_itt).tolist()
-            negative_text_itt = plate_nums[idx_itt - 1]
+            negative_text_itt = plate_nums[negative_index]
             negative_text_vector_itt = get_text_one_hot_encoding(negative_text_itt).tolist()
 
             list_anchor_itt.append(anchor_image_vector_itt)
             list_positive_itt.append(positive_text_vector_itt)
             list_negative_itt.append(negative_text_vector_itt)
 
-            idx_tii = i
-            anchor_text_tii = plate_nums[idx_tii]
+            anchor_text_tii = plate_nums[anchor_index]
             anchor_text_vector_tii = get_text_one_hot_encoding(anchor_text_tii).tolist()
-            positive_image_tii = os.path.join(path_train, plate_files[idx_tii])
-            if os.path.exists(positive_image_tii + '.roi0.jpg'):
-                positive_image_tii = positive_image_tii + '.roi0.jpg'
-            elif os.path.exists(positive_image_tii + '.troi0.jpg'):
-                positive_image_tii = positive_image_tii + '.troi0.jpg'
+            p = os.path.join(path_train, plate_files[anchor_index])
+            p_roi = p + '.roi0.jpg'
+            p_troi = p + '.troi0.jpg'
+            if os.path.exists(p_roi):
+                positive_image_tii = p_roi
+            elif os.path.exists(p_troi):
+                positive_image_tii = p_troi
             else:
                 continue
             positive_image_vector_tii = get_feature_vectors(positive_image_tii).flatten().tolist()
-            negative_image_tii = os.path.join(path_train, plate_files[idx_tii - 1])
-            if os.path.exists(negative_image_tii + '.roi0.jpg'):
-                negative_image_tii = negative_image_tii + '.roi0.jpg'
-            elif os.path.exists(negative_image_tii + '.troi0.jpg'):
-                negative_image_tii = negative_image_tii + '.troi0.jpg'
+            p = os.path.join(path_train, plate_files[negative_index])
+            p_roi = p + '.roi0.jpg'
+            p_troi = p + '.troi0.jpg'
+            if os.path.exists(p_roi):
+                negative_image_tii = p_roi
+            elif os.path.exists(p_troi):
+                negative_image_tii = p_troi
             else:
                 continue
             negative_image_vector_tii = get_feature_vectors(negative_image_tii).flatten().tolist()
-
-            list_anchor_itt.append(anchor_image_vector_itt)
-            list_positive_itt.append(positive_text_vector_itt)
-            list_negative_itt.append(negative_text_vector_itt)
 
             list_anchor_tii.append(anchor_text_vector_tii)
             list_positive_tii.append(positive_image_vector_tii)
             list_negative_tii.append(negative_image_vector_tii)
 
-        if start + batch_size > n:
-            break
-        else:
-            start += batch_size
+        start += batch_size
+
+        sizes = [len(list_anchor_itt), len(list_positive_itt), len(list_negative_itt),
+                 len(list_anchor_tii), len(list_positive_tii), len(list_negative_tii)]
+        min_size = min(sizes)
+
+        if min_size == 0:
+            continue
+
+        list_anchor_itt = list_anchor_itt[:min_size]
+        list_positive_itt = list_positive_itt[:min_size]
+        list_negative_itt = list_negative_itt[:min_size]
+
+        list_anchor_tii = list_anchor_tii[:min_size]
+        list_positive_tii = list_positive_tii[:min_size]
+        list_negative_tii = list_negative_tii[:min_size]
 
         list_anchor_itt = np.array(list_anchor_itt)
         list_positive_itt = np.array(list_positive_itt)
